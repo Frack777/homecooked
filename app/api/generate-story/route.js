@@ -1,28 +1,23 @@
+import { NextResponse } from 'next/server';
+
 export async function POST(request) {
   try {
     const { animal, moral } = await request.json();
     
     if (!animal || !moral) {
-      return new Response(JSON.stringify({ error: 'Animal and moral are required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return NextResponse.json(
+        { error: "Animal and moral are required" }, 
+        { status: 400 }
+      );
     }
 
-    const token = process.env.FRIENDLI_TOKEN;
-    
-    if (!token) {
-      return new Response(JSON.stringify({ error: 'API token not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
+    const token = process.env.FRIENDLI_TOKEN ?? "YOUR_FRIENDLI_TOKEN";
 
     const headers = {
       "Authorization": "Bearer " + token,
       "Content-Type": "application/json",
     };
-    
+
     const body = {
       "model": "deptyoz513gndaw",
       "messages": [
@@ -32,7 +27,7 @@ export async function POST(request) {
         },
         {
           "role": "user",
-          "content": `${animal}, ${moral}`
+          "content": `Write a story about a ${animal} that teaches the moral: "${moral}".`
         }
       ],
       "max_tokens": 32768,
@@ -43,97 +38,84 @@ export async function POST(request) {
       }
     };
 
-    // Create a TransformStream to handle the streaming response
-    const { readable, writable } = new TransformStream();
-    
-    // Process the FriendliAI response in the background
-    fetch("https://api.friendli.ai/dedicated/v1/chat/completions", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body)
-    }).then(async response => {
-      if (!response.ok) {
-        const writer = writable.getWriter();
-        writer.write(new TextEncoder().encode(`Error from FriendliAI API: ${response.status} ${response.statusText}`));
-        writer.close();
-        return;
-      }
+    // Create a new ReadableStream to stream the response
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const response = await fetch("https://api.friendli.ai/dedicated/v1/chat/completions", {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body)
+          });
 
-      // Get the reader from the response body
-      const reader = response.body.getReader();
-      const writer = writable.getWriter();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        // Process the stream
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            break;
+          if (!response.ok) {
+            const errorText = await response.text();
+            controller.error(new Error(`API request failed: ${response.status} ${errorText}`));
+            return;
           }
+
+          // Get the response as a readable stream
+          const reader = response.body.getReader();
           
-          // Decode the chunk
-          const chunk = decoder.decode(value, { stream: true });
-          buffer += chunk;
-          
-          // Process the buffer line by line
-          let newBuffer = '';
-          const lines = buffer.split('\n');
-          
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (i === lines.length - 1) {
-              // This might be an incomplete line, keep it in the buffer
-              newBuffer = line;
-              continue;
+          // Process the stream chunks
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              controller.close();
+              break;
             }
             
-            if (line.startsWith('data:')) {
-              try {
-                const jsonStr = line.slice(5).trim();
-                if (jsonStr === '[DONE]') continue;
+            // Convert the chunk to text
+            const chunk = new TextDecoder().decode(value);
+            
+            // Process each line in the chunk (each line is a separate SSE event)
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.substring(6);
                 
-                const json = JSON.parse(jsonStr);
-                if (json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content) {
-                  // Extract just the content from the delta
-                  const content = json.choices[0].delta.content;
-                  await writer.write(new TextEncoder().encode(content));
+                // Skip [DONE] message
+                if (data === '[DONE]') continue;
+                
+                try {
+                  // Parse the JSON data
+                  const parsedData = JSON.parse(data);
+                  
+                  // Extract the content delta if it exists
+                  if (parsedData.choices && 
+                      parsedData.choices[0] && 
+                      parsedData.choices[0].delta && 
+                      parsedData.choices[0].delta.content) {
+                    // Send the content delta to the client
+                    controller.enqueue(new TextEncoder().encode(parsedData.choices[0].delta.content));
+                  }
+                } catch (e) {
+                  console.error('Error parsing SSE data:', e);
                 }
-              } catch (e) {
-                console.error('Error parsing JSON:', e, line);
               }
             }
           }
-          
-          buffer = newBuffer;
+        } catch (error) {
+          console.error('Stream processing error:', error);
+          controller.error(error);
         }
-      } catch (error) {
-        console.error('Error processing stream:', error);
-      } finally {
-        writer.close();
       }
-    }).catch(error => {
-      console.error('Error calling FriendliAI API:', error);
-      const writer = writable.getWriter();
-      writer.write(new TextEncoder().encode(`Error calling FriendliAI API: ${error.message}`));
-      writer.close();
     });
 
-    // Return the readable stream to the client
-    return new Response(readable, {
+    // Return the stream as a streaming response
+    return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Content-Type-Options': 'nosniff',
+      },
     });
   } catch (error) {
     console.error('API route error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(
+      { error: "Failed to generate story" }, 
+      { status: 500 }
+    );
   }
 }
