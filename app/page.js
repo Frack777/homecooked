@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import ColourfulText from "@/components/ui/colourful-text";
 import { StarsBackground } from "@/components/ui/stars-background";
 import { ShootingStars } from "@/components/ui/shooting-stars";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 export default function Home() {
   const [selectedAnimal, setSelectedAnimal] = useState(null);
@@ -16,6 +17,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [language, setLanguage] = useState("english"); // Default to English
   const [storyData, setStoryData] = useState(null); // Store the parsed story data
+  const [dialogOpen, setDialogOpen] = useState(false); // Control dialog visibility
 
   const animalEmojis = [
     { emoji: "🐶", name: "Dog" },
@@ -120,6 +122,14 @@ export default function Home() {
             // Fix specific structural issues we've seen
             cleanedContent = cleanedContent.replace(/}},\s*"english":/g, '}, "english":');
             cleanedContent = cleanedContent.replace(/}}}\s*$/g, '}}');
+            cleanedContent = cleanedContent.replace(/,\s*}/g, '}'); // Fix trailing commas
+            cleanedContent = cleanedContent.replace(/,\s*,/g, ','); // Fix double commas
+            cleanedContent = cleanedContent.replace(/:\s*,/g, ': null,'); // Fix missing values
+            cleanedContent = cleanedContent.replace(/"\s*"/g, '" "'); // Fix empty strings
+            
+            // Remove any markdown code block formatting
+            cleanedContent = cleanedContent.replace(/```json\s*/g, '');
+            cleanedContent = cleanedContent.replace(/```\s*$/g, '');
             
             console.log('Cleaned content:', cleanedContent);
             
@@ -131,9 +141,63 @@ export default function Home() {
               console.log('Extracted JSON:', jsonContent);
             }
             
-            // Try parsing the cleaned content
-            parsedData = JSON.parse(jsonContent);
-            console.log('Successfully parsed JSON after cleanup:', parsedData);
+            try {
+              // Try parsing the cleaned content
+              parsedData = JSON.parse(jsonContent);
+              console.log('Successfully parsed JSON after cleanup:', parsedData);
+            } catch (jsonSyntaxError) {
+              console.error('JSON syntax error:', jsonSyntaxError);
+              
+              // Get error position from the error message
+              const positionMatch = jsonSyntaxError.message.match(/position (\d+)/);
+              if (positionMatch && positionMatch[1]) {
+                const errorPosition = parseInt(positionMatch[1]);
+                console.log(`Error at position ${errorPosition}`);
+                
+                // Extract the problematic part of the JSON (10 chars before and after)
+                const start = Math.max(0, errorPosition - 10);
+                const end = Math.min(jsonContent.length, errorPosition + 10);
+                const problematicPart = jsonContent.substring(start, end);
+                console.log(`Problematic part: "${problematicPart}"`);
+                
+                // Try to fix common issues at specific positions
+                let fixedContent = jsonContent;
+                
+                // Fix for trailing commas before closing braces
+                if (problematicPart.includes(',}') || problematicPart.includes(', }')) {
+                  fixedContent = jsonContent.substring(0, errorPosition) + 
+                                 jsonContent.substring(errorPosition).replace(/,\s*}/g, '}');
+                }
+                
+                // Fix for missing values after colons
+                if (problematicPart.includes(':,') || problematicPart.includes(': ,')) {
+                  fixedContent = jsonContent.substring(0, errorPosition) + 
+                                 jsonContent.substring(errorPosition).replace(/:\s*,/g, ': null,');
+                }
+                
+                // Fix for missing commas between properties
+                if (/"\s*"/.test(problematicPart)) {
+                  fixedContent = jsonContent.substring(0, errorPosition) + 
+                                 jsonContent.substring(errorPosition).replace(/"\s*"/g, '", "');
+                }
+                
+                console.log('Attempting to parse fixed content');
+                parsedData = JSON.parse(fixedContent);
+              } else {
+                // Last resort: try a more aggressive approach - rebuild the JSON
+                console.log('Attempting aggressive JSON reconstruction');
+                
+                // Extract all key-value pairs using regex
+                const keyValuePairs = jsonContent.match(/"[^"]+"\s*:\s*"[^"]*"|"[^"]+"\s*:\s*\{[^}]*\}/g);
+                if (keyValuePairs) {
+                  // Rebuild a clean JSON object
+                  const reconstructedJson = `{${keyValuePairs.join(',')}}`.replace(/,,/g, ',');
+                  parsedData = JSON.parse(reconstructedJson);
+                } else {
+                  throw jsonSyntaxError; // Re-throw if we can't fix it
+                }
+              }
+            }
           }
           
           // Check if the parsed data has the expected structure and normalize it if needed
@@ -183,6 +247,9 @@ export default function Home() {
                 setStory(data.content);
               }
             }
+            
+            // Open the dialog when story is ready
+            setDialogOpen(true);
           } else {
             // If the structure isn't as expected, just show the raw content
             console.warn('Parsed data missing expected structure:', parsedData);
@@ -273,10 +340,13 @@ export default function Home() {
           </Button>
         </div>
 
-        {story && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-center">Your Magical Story</CardTitle>
+        {/* Story Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle className="text-center text-2xl">
+                {storyData && storyData[language] && storyData[language].title}
+              </DialogTitle>
               {storyData && storyData.russian && storyData.english && (
                 <div className="flex items-center justify-center gap-3 mt-4">
                   <span className={`text-sm ${language === 'russian' ? 'font-bold' : ''}`}>Russian</span>
@@ -293,16 +363,15 @@ export default function Home() {
                   <span className={`text-sm ${language === 'english' ? 'font-bold' : ''}`}>English</span>
                 </div>
               )}
-            </CardHeader>
-            <CardContent>
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-inner overflow-auto max-h-[500px]">
-                <p className="text-lg whitespace-pre-wrap">{story}</p>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-center">
+            </DialogHeader>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-inner overflow-auto max-h-[60vh]">
+              <p className="text-lg whitespace-pre-wrap">{story}</p>
+            </div>
+            <DialogFooter className="flex justify-center mt-4">
               <Button 
                 variant="outline" 
                 onClick={() => {
+                  setDialogOpen(false);
                   setSelectedAnimal(null);
                   setSelectedMoral("");
                   setStory("");
@@ -311,9 +380,9 @@ export default function Home() {
               >
                 Create Another Story
               </Button>
-            </CardFooter>
-          </Card>
-        )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

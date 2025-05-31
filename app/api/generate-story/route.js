@@ -91,12 +91,20 @@ Do not include any markdown formatting, explanations, or additional text. The re
       // Fix common JSON structural issues
       content = content.replace(/}},\s*"english":/g, '}, "english":'); // Fix extra closing brace
       content = content.replace(/}}}\s*$/g, '}}'); // Fix extra closing brace at end
+      content = content.replace(/,\s*}/g, '}'); // Fix trailing commas
+      content = content.replace(/,\s*,/g, ','); // Fix double commas
+      content = content.replace(/:\s*,/g, ': null,'); // Fix missing values
+      content = content.replace(/"\s*"/g, '" "'); // Fix empty strings
       
       // Try to extract just the JSON object if there's extra text
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         content = jsonMatch[0];
       }
+      
+      // Remove any markdown code block formatting
+      content = content.replace(/```json\s*/g, '');
+      content = content.replace(/```\s*$/g, '');
       
       console.log('Sanitized content before parsing:', content);
       
