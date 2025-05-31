@@ -9,15 +9,17 @@ import ColourfulText from "@/components/ui/colourful-text";
 import { StarsBackground } from "@/components/ui/stars-background";
 import { ShootingStars } from "@/components/ui/shooting-stars";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Home() {
   const [selectedAnimal, setSelectedAnimal] = useState(null);
   const [selectedMoral, setSelectedMoral] = useState("");
-  const [story, setStory] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [story, setStory] = useState("");
   const [language, setLanguage] = useState("english"); // Default to English
   const [storyData, setStoryData] = useState(null); // Store the parsed story data
   const [dialogOpen, setDialogOpen] = useState(false); // Control dialog visibility
+  const [loadingMessage, setLoadingMessage] = useState(""); // Store current loading message
 
   const animalEmojis = [
     { emoji: "🐶", name: "Dog" },
@@ -31,18 +33,56 @@ export default function Home() {
     { emoji: "🦁", name: "Lion" },
     { emoji: "🐯", name: "Tiger" },
     { emoji: "🐮", name: "Cow" },
-    { emoji: "🐷", name: "Pig" }
+    { emoji: "🐷", name: "Pig" },
+    { emoji: "🐺", name: "Wolf" },
+    { emoji: "🦝", name: "Raccoon" },
+    { emoji: "🦄", name: "Unicorn" },
+    { emoji: "🦓", name: "Zebra" },
+    { emoji: "🦒", name: "Giraffe" },
+    { emoji: "🐘", name: "Elephant" },
+    { emoji: "🦔", name: "Hedgehog" },
+    { emoji: "🦇", name: "Bat" },
+    { emoji: "🐿️", name: "Squirrel" },
+    { emoji: "🦅", name: "Eagle" },
+    { emoji: "🦉", name: "Owl" },
+    { emoji: "🐢", name: "Turtle" },
+    { emoji: "🐍", name: "Snake" },
+    { emoji: "🐸", name: "Frog" },
+    { emoji: "🦋", name: "Butterfly" },
+    { emoji: "🐝", name: "Bee" }
   ];
 
   const morals = [
     "Honesty is the best policy",
     "Slow and steady wins the race",
     "Don't judge a book by its cover",
-    "Unity is strength",
     "Pride comes before a fall",
-    "One good turn deserves another",
+    "Actions speak louder than words",
+    "United we stand, divided we fall",
+    "A friend in need is a friend indeed",
     "Fortune favors the brave",
-    "Actions speak louder than words"
+    "Knowledge is power",
+    "Appearances can be deceiving",
+    "Kindness costs nothing but means everything",
+    "The journey is more important than the destination",
+    "True beauty comes from within",
+    "Patience is a virtue",
+    "Greed leads to downfall",
+    "Every cloud has a silver lining",
+    "The wise learn from others' mistakes",
+    "One good turn deserves another",
+    "Love conquers all",
+    "The truth will always be revealed",
+    "Unity is strength",
+    "Courage is facing your fears",
+    "The pen is mightier than the sword",
+    "All that glitters is not gold",
+    "A stitch in time saves nine",
+    "Curiosity killed the cat, but satisfaction brought it back",
+    "Two wrongs don't make a right",
+    "The early bird catches the worm",
+    "Where there's a will, there's a way",
+    "You can't judge a book by its cover"
   ];
 
   const loadingTexts = [
@@ -57,21 +97,26 @@ export default function Home() {
   ];
 
   const generateStory = async () => {
-    if (!selectedAnimal || !selectedMoral) {
-      alert("Please select both an animal and a moral for your story.");
-      return;
-    }
+    if (!selectedAnimal || !selectedMoral) return;
+    
+    // Reset states and show loading UI
+    setIsGenerating(true);
+    setStory("");
+    setLoadingMessage(loadingTexts[0]);
+    
+    // Show loading dialog with spinner
+    setDialogOpen(true);
+    
+    // Variable to store the loading interval reference
+    let loadingInterval;
     
     try {
-      setIsGenerating(true);
-      
       // Start custom loading animation
       let loadingIndex = 0;
-      setStory(loadingTexts[0]);
       
-      const loadingInterval = setInterval(() => {
+      loadingInterval = setInterval(() => {
         loadingIndex = (loadingIndex + 1) % loadingTexts.length;
-        setStory(loadingTexts[loadingIndex]);
+        setLoadingMessage(loadingTexts[loadingIndex]);
       }, 2000);
       
       // Make API request
@@ -86,17 +131,14 @@ export default function Home() {
         }),
       });
       
-      // Clear the loading interval
-      clearInterval(loadingInterval);
-      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       // Parse the JSON response
       const data = await response.json();
+      console.log("Raw API response:", data);
       
-      // Set the story content
       if (data.content) {
         // Log the raw content for debugging
         console.log('Raw content from API:', data.content);
@@ -265,12 +307,16 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error generating story:', error);
-      setStory("Sorry, there was an error generating your story. Please try again.");
+      setStory('Sorry, there was an error generating your story. Please try again.');
     } finally {
+      // Always clear the loading interval and state
+      if (loadingInterval) {
+        clearInterval(loadingInterval);
+      }
+      setLoadingMessage(""); // Clear loading message
       setIsGenerating(false);
     }
   };
-
   return (
     <div className="min-h-screen p-8 bg-gradient-to-b from-blue-950 to-purple-950 dark:from-blue-950 dark:to-purple-950 relative overflow-hidden">
       {/* Stars background */}
@@ -333,19 +379,27 @@ export default function Home() {
         <div className="flex justify-center mb-8">
           <Button 
             onClick={generateStory} 
-            className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 text-lg"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 text-lg flex items-center gap-2"
             disabled={!selectedAnimal || !selectedMoral || isGenerating}
           >
+            {isGenerating && <Spinner size="sm" className="border-white" />}
             {isGenerating ? "Generating..." : "Generate Your Story"}
           </Button>
         </div>
 
         {/* Story Dialog */}
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          // Only allow closing if not generating
+          if (!isGenerating) setDialogOpen(open);
+        }}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
             <DialogHeader>
               <DialogTitle className="text-center text-2xl">
-                {storyData && storyData[language] && storyData[language].title}
+                {isGenerating ? (
+                  "Creating Your Magical Story"
+                ) : (
+                  storyData && storyData[language] && storyData[language].title
+                )}
               </DialogTitle>
               {storyData && storyData.russian && storyData.english && (
                 <div className="flex items-center justify-center gap-3 mt-4">
@@ -365,7 +419,16 @@ export default function Home() {
               )}
             </DialogHeader>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-inner overflow-auto max-h-[60vh]">
-              <p className="text-lg whitespace-pre-wrap">{story}</p>
+              {isGenerating ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Spinner size="xl" className="mb-6" />
+                  <p className="text-lg text-center animate-pulse">
+                    {loadingMessage}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-lg whitespace-pre-wrap">{story}</p>
+              )}
             </div>
             <DialogFooter className="flex justify-center mt-4">
               <Button 
