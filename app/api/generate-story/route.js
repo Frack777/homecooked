@@ -32,85 +32,35 @@ export async function POST(request) {
       ],
       "max_tokens": 32768,
       "top_p": 0.8,
-      "stream": true,
-      "stream_options": {
-        "include_usage": true
-      }
+      "stream": false,
     };
 
-    // Create a new ReadableStream to stream the response
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const response = await fetch("https://api.friendli.ai/dedicated/v1/chat/completions", {
-            method: "POST",
-            headers,
-            body: JSON.stringify(body)
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            controller.error(new Error(`API request failed: ${response.status} ${errorText}`));
-            return;
-          }
-
-          // Get the response as a readable stream
-          const reader = response.body.getReader();
-          
-          // Process the stream chunks
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              controller.close();
-              break;
-            }
-            
-            // Convert the chunk to text
-            const chunk = new TextDecoder().decode(value);
-            
-            // Process each line in the chunk (each line is a separate SSE event)
-            const lines = chunk.split('\n');
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.substring(6);
-                
-                // Skip [DONE] message
-                if (data === '[DONE]') continue;
-                
-                try {
-                  // Parse the JSON data
-                  const parsedData = JSON.parse(data);
-                  
-                  // Extract the content delta if it exists
-                  if (parsedData.choices && 
-                      parsedData.choices[0] && 
-                      parsedData.choices[0].delta && 
-                      parsedData.choices[0].delta.content) {
-                    // Send the content delta to the client
-                    controller.enqueue(new TextEncoder().encode(parsedData.choices[0].delta.content));
-                  }
-                } catch (e) {
-                  console.error('Error parsing SSE data:', e);
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Stream processing error:', error);
-          controller.error(error);
-        }
-      }
+    // Make the API request
+    const response = await fetch("https://api.friendli.ai/dedicated/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body)
     });
 
-    // Return the stream as a streaming response
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        'X-Content-Type-Options': 'nosniff',
-      },
-    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`API request failed: ${response.status} ${errorText}`);
+      return NextResponse.json(
+        { error: `API request failed: ${response.status}` }, 
+        { status: response.status }
+      );
+    }
+
+    // Parse the JSON response
+    const data = await response.json();
+    
+    // Extract the content from the response
+    const content = data.choices && data.choices[0] && data.choices[0].message 
+      ? data.choices[0].message.content 
+      : "Failed to generate story content";
+
+    // Return the story content as JSON
+    return NextResponse.json({ story: content });
   } catch (error) {
     console.error('API route error:', error);
     return NextResponse.json(

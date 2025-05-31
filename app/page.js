@@ -37,6 +37,17 @@ export default function Home() {
     "Actions speak louder than words"
   ];
 
+  const loadingTexts = [
+    "Once upon a time...",
+    "In a magical forest...",
+    "The words are forming...",
+    "Crafting your tale...",
+    "Weaving poetic magic...",
+    "Channeling Pushkin's spirit...",
+    "Creating in two languages...",
+    "Your story is almost ready..."
+  ];
+
   const generateStory = async () => {
     if (!selectedAnimal || !selectedMoral) {
       alert("Please select both an animal and a moral for your story.");
@@ -45,8 +56,17 @@ export default function Home() {
     
     try {
       setIsGenerating(true);
-      setStory("Once upon a time...");
       
+      // Start custom loading animation
+      let loadingIndex = 0;
+      setStory(loadingTexts[0]);
+      
+      const loadingInterval = setInterval(() => {
+        loadingIndex = (loadingIndex + 1) % loadingTexts.length;
+        setStory(loadingTexts[loadingIndex]);
+      }, 2000);
+      
+      // Make API request
       const response = await fetch('/api/generate-story', {
         method: 'POST',
         headers: {
@@ -58,27 +78,21 @@ export default function Home() {
         }),
       });
       
+      // Clear the loading interval
+      clearInterval(loadingInterval);
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      // Get the response as a readable stream
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let storyText = "Once upon a time...";
+      // Parse the JSON response
+      const data = await response.json();
       
-      // Process the stream chunks
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) {
-          break;
-        }
-        
-        // Decode the chunk and append to the story
-        const chunk = decoder.decode(value, { stream: true });
-        storyText += chunk;
-        setStory(storyText);
+      // Set the story content
+      if (data.story) {
+        setStory(data.story);
+      } else {
+        throw new Error('No story content received');
       }
     } catch (error) {
       console.error('Error generating story:', error);
