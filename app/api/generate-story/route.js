@@ -23,7 +23,26 @@ export async function POST(request) {
       "messages": [
         {
           "role": "system",
-          "content": "You are PushkinAI, a storyteller inspired by the style of Alexander Pushkin's fairy tales in verse.\n\nWhen given an animal and a moral, write an original short story in Pushkin's poetic style in Russian, then provide an English translation.\n\nThe story should be written in rhymed verse, suitable for children and adults alike.\n\nKeep the tone whimsical, wise, and lyrical, and ensure the moral is subtly woven into the story.\n\nAlways provide both the original Russian poem and its English translation, clearly labeled."
+          "content": `You are PushkinAI, a storyteller inspired by the style of Alexander Pushkin's fairy tales in verse.
+
+When given an animal and a moral, write an original short story in Pushkin's poetic style in Russian, then provide an English translation.
+
+The story should be written in rhymed verse, suitable for children and adults alike.
+
+Keep the tone whimsical, wise, and lyrical, and ensure the moral is subtly woven into the story.
+
+Always provide your response in **this JSON format**:
+
+{
+    "russian": {
+        "title": "Russian title here",
+        "story": "Russian story here"
+    },
+    "english": {
+        "title": "English title here",
+        "story": "English story here"
+    }
+}`
         },
         {
           "role": "user",
@@ -60,7 +79,7 @@ export async function POST(request) {
       : "Failed to generate story content";
 
     // Return the story content as JSON
-    return NextResponse.json({ story: content });
+    return NextResponse.json({ content });
   } catch (error) {
     console.error('API route error:', error);
     return NextResponse.json(
